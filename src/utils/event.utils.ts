@@ -43,10 +43,8 @@ export function filterEventsByVenue(
   venue: string
 ): CrmEvent[] {
   const filteredEvents = events.filter(
-    (event) =>
-      event.eventVenues &&
-      event.eventVenues.includes(venue) &&
-      event.WebsiteStatus.toLowerCase() === "online"
+    (event) => event.eventVenues && event.eventVenues.includes(venue) &&
+    event.WebsiteStatus.toLowerCase() === "online"
   );
   return filteredEvents;
 }

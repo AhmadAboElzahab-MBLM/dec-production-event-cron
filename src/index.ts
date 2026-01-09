@@ -2,7 +2,6 @@ import { fetchCrmEvents } from "./services/crm.service";
 import {
   fetchUmbracoEvents,
   fetchEventById,
-  createUmbracoEvent,
   updateUmbracoEvent,
   publishUmbracoEvent,
 } from "./services/umbraco.service";
@@ -10,10 +9,9 @@ import { sendSyncNotificationEmail } from "./services/mailgun.service";
 import {
   filterEventsByVenue,
   compareEvents,
-  mapCrmEventToUmbraco,
   mapCrmEventForUpdate,
 } from "./utils/event.utils";
-import type { Env, CreateEventRequest } from "./types/events.types";
+import type { Env } from "./types/events.types";
 
 export interface ExportedHandler {
   scheduled: (
@@ -48,25 +46,15 @@ export default {
     const filteredCrmEvents = filterEventsByVenue(crmResponse.data, "DWTC");
     console.log(`📊 Found ${filteredCrmEvents.length} DWTC events in CRM`);
 
-    const { toUpdate, toCreate } = compareEvents(
+    const { toUpdate } = compareEvents(
       filteredCrmEvents,
       umbracoResponse.data
     );
 
     console.log(`🔄 Events to update: ${toUpdate.length}`);
-    console.log(`➕ Events to create: ${toCreate.length}`);
 
     const processedEventIds: string[] = [];
     const updatedEvents: Array<{
-      title: string;
-      eventId: number;
-      startDate: string;
-      endDate: string;
-      location: string | null;
-      eventType: string;
-      eventOrganiser: string;
-    }> = [];
-    const createdEvents: Array<{
       title: string;
       eventId: number;
       startDate: string;
@@ -86,13 +74,13 @@ export default {
       error: string;
     }> = [];
 
-    if (toUpdate.length === 0 && toCreate.length === 0) {
+    if (toUpdate.length === 0) {
       console.log("✅ All events are up to date - no sync needed!");
 
       try {
         await sendSyncNotificationEmail(env, {
           updatedEvents,
-          createdEvents,
+          createdEvents: [],
           failedEvents,
           syncDate: new Date().toLocaleString("en-US", {
             timeZone: "Asia/Dubai",
@@ -186,48 +174,11 @@ export default {
       }
     }
 
-    for (const crmEvent of toCreate) {
-      const eventData = mapCrmEventToUmbraco(
-        crmEvent,
-        env.UMBRACO_PARENT_ID
-      ) as CreateEventRequest;
-      const createResult = await createUmbracoEvent(env, eventData);
-
-      if (createResult.success) {
-        console.log(`➕ Created: ${crmEvent.title} (ID: ${crmEvent.eventId})`);
-        processedEventIds.push(createResult.data._id);
-        createdEvents.push({
-          title: crmEvent.title,
-          eventId: crmEvent.eventId,
-          startDate: crmEvent.startDate,
-          endDate: crmEvent.endDate,
-          location: crmEvent.location,
-          eventType: crmEvent.eventType,
-          eventOrganiser: crmEvent.eventOrganiser,
-        });
-      } else {
-        console.error(
-          `❌ Failed to create event ${crmEvent.eventId}:`,
-          createResult.error
-        );
-        failedEvents.push({
-          title: crmEvent.title,
-          eventId: crmEvent.eventId,
-          startDate: crmEvent.startDate,
-          endDate: crmEvent.endDate,
-          location: crmEvent.location,
-          eventType: crmEvent.eventType,
-          eventOrganiser: crmEvent.eventOrganiser,
-          error: createResult.error,
-        });
-      }
-    }
-
     for (const contentId of processedEventIds) {
       const publishResult = await publishUmbracoEvent(env, contentId);
 
       if (publishResult.success) {
-        const eventInfo = [...updatedEvents, ...createdEvents].find(
+        const eventInfo = updatedEvents.find(
           (e) =>
             e.eventId.toString() === contentId ||
             contentId.includes(e.eventId.toString())
@@ -247,7 +198,7 @@ export default {
     try {
       await sendSyncNotificationEmail(env, {
         updatedEvents,
-        createdEvents,
+        createdEvents: [],
         failedEvents,
         syncDate: new Date().toLocaleString("en-US", {
           timeZone: "Asia/Dubai",
